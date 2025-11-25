@@ -16,6 +16,10 @@ class Settings(BaseSettings):
 	OUTPUT_DIR: str = Field(default="./outputs")
 	DATA_DIR: str = Field(default="./data")
 	CHROMA_DB_DIR: str = Field(default="./data/indices/chroma")
+	SQLITE_DB_PATH: str = Field(default="./data/indices/sqlite/app.db")
+	HYBRID_SEARCH_ENABLED: bool = Field(default=True)
+	SQL_AGENT_ENABLED: bool = Field(default=True)
+	SQL_MAX_ROWS: int = Field(default=200)
 	CORS_ORIGINS: str = Field(default="*")  # comma-separated or '*'
 
 	model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -26,6 +30,13 @@ class Settings(BaseSettings):
 		"""
 		for path in [self.LOG_DIR, self.OUTPUT_DIR, self.DATA_DIR, self.CHROMA_DB_DIR]:
 			Path(path).mkdir(parents=True, exist_ok=True)
+		# ensure sqlite directory exists
+		try:
+			sqlite_parent = Path(self.SQLITE_DB_PATH).parent
+			sqlite_parent.mkdir(parents=True, exist_ok=True)
+		except Exception:
+			# best-effort; don't crash app startup
+			pass
 
 
 @lru_cache

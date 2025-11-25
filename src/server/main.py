@@ -16,6 +16,8 @@ from src.utils.logging import get_logger
 from src.ingestion.csv_ingestor import csv_to_chunks
 from src.ingestion.fs_ingestor import unzip_to_folder, folder_to_chunks
 from src.rag.local import LocalRAG
+from src.ingestion.sql_store import store_chunks
+from src.ingestion.analyze import analyze_and_store_schema
 
 app = FastAPI(title="Agent Server (MVP)", version="0.1.0")
 logger = get_logger(__name__)
@@ -44,15 +46,20 @@ async def process_chat(req: ChatProcessRequest):
 		"model_id": req.model_id or settings.LLM_MODEL_ID,
 		"session_id": req.session_id or None,
 		"k": req.k or 5,
+		"retrieval_mode": req.retrieval_mode or None,
 	}
 	logger.info({"event": "chat_process_start", "model_id": state["model_id"]})
 	result = await chat_app.ainvoke(state)
 	logger.info({"event": "chat_process_end"})
+	# Build sources from both hybrid docs and SQL summary (if any)
+	sources = [{"source": d.get("metadata", {}).get("file"), "text": d.get("text")} for d in result.get("retrieved", [])]
+	if result.get("sql_summary"):
+		sources.append({"source": "sql", "text": result.get("sql_summary")})
 	return ChatProcessResponse(
 		answer=result.get("answer", ""),
 		model_id=state["model_id"],
-		sources=[{"source": d.get("metadata", {}).get("file"), "text": d.get("text")} for d in result.get("retrieved", [])] or None,
-		meta={"tokens": None},
+		sources=sources or None,
+		meta={"tokens": None, "intent_mode": result.get("intent_mode")},
 	)
 
 
@@ -64,6 +71,7 @@ async def ingest_chat(files: Optional[List[UploadFile]] = File(default=None), fo
 		upload_dir.mkdir(parents=True, exist_ok=True)
 
 		chunks = []
+		csv_paths: List[Path] = []
 		if files:
 			for f in files:
 				dest = upload_dir / f.filename
@@ -71,6 +79,7 @@ async def ingest_chat(files: Optional[List[UploadFile]] = File(default=None), fo
 				dest.write_bytes(content)
 				if dest.suffix.lower() == ".csv":
 					chunks.extend(csv_to_chunks(dest))
+					csv_paths.append(dest)
 				elif dest.suffix.lower() in {".txt", ".md"}:
 					chunks.append({"text": dest.read_text(encoding="utf-8", errors="ignore"), "metadata": {"file": dest.name}})
 		if folder_zip:
@@ -78,7 +87,19 @@ async def ingest_chat(files: Optional[List[UploadFile]] = File(default=None), fo
 			zip_dest.write_bytes(await folder_zip.read())
 			folder = unzip_to_folder(zip_dest, upload_dir / "unzipped")
 			chunks.extend(folder_to_chunks(folder))
+			# collect csv paths for schema analysis
+			for p in folder.rglob("*.csv"):
+				csv_paths.append(p)
 
+		# write to SQLite (rows + FTS)
+		if chunks:
+			store_chunks(session_id=session_id, chunks=chunks)
+		# analyze CSV schema and store
+		for p in csv_paths:
+			try:
+				analyze_and_store_schema(session_id=session_id, file_path=p)
+			except Exception:
+				logger.exception("schema_analysis_failed")
 		rag = LocalRAG()
 		if chunks:
 			await rag.build_index(session_id=session_id, chunks=chunks)
@@ -96,6 +117,7 @@ async def ingest_csv(files: Optional[List[UploadFile]] = File(default=None), fol
 		upload_dir.mkdir(parents=True, exist_ok=True)
 
 		chunks = []
+		csv_paths: List[Path] = []
 		if files:
 			for f in files:
 				dest = upload_dir / f.filename
@@ -103,6 +125,7 @@ async def ingest_csv(files: Optional[List[UploadFile]] = File(default=None), fol
 				dest.write_bytes(content)
 				if dest.suffix.lower() == ".csv":
 					chunks.extend(csv_to_chunks(dest))
+					csv_paths.append(dest)
 				elif dest.suffix.lower() in {".txt", ".md"}:
 					chunks.append({"text": dest.read_text(encoding="utf-8", errors="ignore"), "metadata": {"file": dest.name}})
 		if folder_zip:
@@ -110,7 +133,18 @@ async def ingest_csv(files: Optional[List[UploadFile]] = File(default=None), fol
 			zip_dest.write_bytes(await folder_zip.read())
 			folder = unzip_to_folder(zip_dest, upload_dir / "unzipped")
 			chunks.extend(folder_to_chunks(folder))
+			for p in folder.rglob("*.csv"):
+				csv_paths.append(p)
 
+		# write to SQLite (rows + FTS)
+		if chunks:
+			store_chunks(session_id=session_id, chunks=chunks)
+		# analyze CSV schema
+		for p in csv_paths:
+			try:
+				analyze_and_store_schema(session_id=session_id, file_path=p)
+			except Exception:
+				logger.exception("csv_schema_analysis_failed")
 		rag = LocalRAG()
 		if chunks:
 			await rag.build_index(session_id=session_id, chunks=chunks)

@@ -8,6 +8,7 @@ class ChatProcessRequest(BaseModel):
 	system_prompt: Optional[str] = Field(default=None, description="Custom system prompt")
 	model_id: Optional[str] = Field(default=None, description="Model override")
 	session_id: Optional[str] = Field(default=None, description="If provided, use LocalRAG with this session index")
+	retrieval_mode: Optional[str] = Field(default=None, description="Override: one of none, sql, hybrid, both")
 
 
 class SourceItem(BaseModel):

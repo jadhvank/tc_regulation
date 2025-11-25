@@ -5,6 +5,7 @@ from datetime import datetime
 from langgraph.graph import StateGraph, END
 
 from src.rag.local import LocalRAG
+from src.rag.hybrid import HybridRAG
 from src.model.litellm_client import complete_chat
 from src.config.settings import get_settings
 
@@ -21,7 +22,8 @@ class CSVState(TypedDict, total=False):
 
 
 async def retrieve_node(state: CSVState) -> CSVState:
-	rag = LocalRAG()
+	settings = get_settings()
+	rag = HybridRAG() if settings.HYBRID_SEARCH_ENABLED else LocalRAG()
 	docs = await rag.search(session_id=state["session_id"], query=state["query"], k=state.get("k", 5))
 	return {**state, "retrieved": docs}
 

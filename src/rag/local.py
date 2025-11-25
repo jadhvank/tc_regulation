@@ -40,7 +40,8 @@ class LocalRAG:
 				# Skip empty/whitespace-only chunks to avoid Chroma upsert validation errors
 				continue
 			meta = ch.get("metadata", {}) or {}
-			doc_id = f"{idx}-{_hash_text(text)[:12]}"
+			# preserve provided chunk id if available to keep cross-store linkage
+			doc_id = str(ch.get("id")) if ch.get("id") else f"{idx}-{_hash_text(text)[:12]}"
 			ids.append(doc_id)
 			texts.append(text)
 			metas.append(meta)
