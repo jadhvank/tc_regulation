@@ -4,7 +4,7 @@ from src.model.litellm_client import complete_chat
 from src.ingestion.sql_store import has_session_data
 
 
-IntentMode = Literal["sql", "hybrid", "none", "both", "stats"]
+IntentMode = Literal["sql", "hybrid", "none", "both", "stats", "columns"]
 
 
 _HEUR_KEYS_SQL = [
@@ -23,8 +23,11 @@ async def classify_intent(question: str, system_prompt: Optional[str] = None, db
 	sql_score = sum(1 for k in _HEUR_KEYS_SQL if k in q)
 	hyb_score = sum(1 for k in _HEUR_KEYS_HYBRID if k in q)
 	stats_score = 1 if any(k in q for k in ["통계", "統計", "개수", "합계", "분포", "비율"]) else 0
+	columns_score = 1 if any(k in q for k in ["columns", "column", "컬럼", "열 목록", "열이 뭐", "헤더", "schema", "스키마", "필드"]) else 0
 	if stats_score and session_id and has_session_data(session_id):
 		return "stats"
+	if columns_score and session_id and has_session_data(session_id):
+		return "columns"
 	if sql_score > 0 and hyb_score > 0:
 		return "both"
 	if sql_score > 0:

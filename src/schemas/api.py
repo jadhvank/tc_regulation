@@ -9,6 +9,7 @@ class ChatProcessRequest(BaseModel):
 	model_id: Optional[str] = Field(default=None, description="Model override")
 	session_id: Optional[str] = Field(default=None, description="If provided, use LocalRAG with this session index")
 	retrieval_mode: Optional[str] = Field(default=None, description="Override: one of none, sql, hybrid, both")
+	chat_id: Optional[str] = Field(default=None, description="Existing chat to append and use history")
 
 
 class SourceItem(BaseModel):
@@ -23,6 +24,7 @@ class ChatProcessResponse(BaseModel):
 	model_id: str
 	sources: Optional[List[SourceItem]] = None
 	meta: Optional[Dict[str, Any]] = None
+	chat_id: Optional[str] = None
 
 
 class CSVIngestResponse(BaseModel):
@@ -48,5 +50,40 @@ class CSVProcessResponse(BaseModel):
 	files: List[str] = []
 	sources: Optional[List[SourceItem]] = None
 	file_urls: Optional[List[str]] = None
+
+
+class ChatCreateRequest(BaseModel):
+	session_id: Optional[str] = None
+	title: Optional[str] = None
+
+
+class ChatCreateResponse(BaseModel):
+	chat_id: str
+	session_id: Optional[str] = None
+	title: Optional[str] = None
+	created_at: str
+	updated_at: str
+
+
+class ChatListItem(BaseModel):
+	chat_id: str
+	title: Optional[str] = None
+	session_id: Optional[str] = None
+	updated_at: str
+
+
+class ChatListResponse(BaseModel):
+	chats: List[ChatListItem]
+
+
+class ChatMessage(BaseModel):
+	role: str
+	content: str
+	created_at: str
+
+
+class ChatMessagesResponse(BaseModel):
+	chat_id: str
+	messages: List[ChatMessage]
 
 

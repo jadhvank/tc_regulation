@@ -11,6 +11,7 @@ from src.agents.db_context import get_session_profile, refresh_session_profile
 from src.ingestion.sql_store import has_session_data
 from src.agents.sql_answer import answer_from_sql
 from src.agents.stats_agent import compute_stats, summarize_stats
+from src.agents.columns_agent import get_columns, summarize_columns
 
 
 class ChatState(TypedDict, total=False):
@@ -28,8 +29,11 @@ class ChatState(TypedDict, total=False):
 	sql_answer_text: str
 	stats_result: Dict[str, Any]
 	stats_summary: str
+	columns_map: Dict[str, Any]
+	columns_summary: str
 	answer: str
 	messages: List[Dict[str, str]]
+	history_messages: List[Dict[str, str]]
 async def load_db_context_node(state: ChatState) -> ChatState:
 	settings = get_settings()
 	if not settings.DB_CONTEXT_ENABLED or not state.get("session_id"):
@@ -99,6 +103,14 @@ async def stats_compute_node(state: ChatState) -> ChatState:
 	return {"stats_result": res, "stats_summary": summary}
 
 
+async def columns_compute_node(state: ChatState) -> ChatState:
+	if state.get("intent_mode") != "columns" or not state.get("session_id"):
+		return {}
+	cols = get_columns(session_id=state["session_id"])
+	summary = summarize_columns(cols)
+	return {"columns_map": cols, "columns_summary": summary}
+
+
 async def hybrid_search_node(state: ChatState) -> ChatState:
 	if state.get("intent_mode") not in {"hybrid", "both"}:
 		return {}
@@ -122,6 +134,9 @@ async def generate_node(state: ChatState) -> ChatState:
 	# include stats if present
 	if state.get("stats_summary"):
 		parts.append(f"[STATS]\n{state['stats_summary']}")
+	# include columns if present
+	if state.get("columns_summary"):
+		parts.append(f"[COLUMNS]\n{state['columns_summary']}")
 	# include SQL natural-language answer if present
 	if state.get("sql_answer_text"):
 		parts.append(f"[SQL_ANSWER]\n{state['sql_answer_text']}")
@@ -133,10 +148,12 @@ async def generate_node(state: ChatState) -> ChatState:
 		parts.append(f"[DOCUMENTS]\n{texts}")
 	context = "\n\n".join([p for p in parts if p])
 	user_content = f"{context}\n\nQuestion:\n{prompt}" if context else prompt
-	messages = [
-		{"role": "system", "content": system_prompt},
-		{"role": "user", "content": user_content},
-	]
+	# Assemble messages: system, prior convo, current user
+	messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+	for m in state.get("history_messages", []) or []:
+		if m.get("role") in {"user", "assistant"} and isinstance(m.get("content"), str):
+			messages.append({"role": m["role"], "content": m["content"]})
+	messages.append({"role": "user", "content": user_content})
 	answer = await complete_chat(messages, model_id=state.get("model_id"))
 	return {"messages": messages + [{"role": "assistant", "content": answer}], "answer": answer}
 
@@ -148,6 +165,7 @@ def build_chat_graph():
 	graph.add_node("sql_search", sql_search_node)
 	graph.add_node("sql_answer", sql_answer_node)
 	graph.add_node("stats_compute", stats_compute_node)
+	graph.add_node("columns_compute", columns_compute_node)
 	graph.add_node("hybrid_search", hybrid_search_node)
 	graph.add_node("generate", generate_node)
 	graph.set_entry_point("load_db_context")
@@ -155,9 +173,11 @@ def build_chat_graph():
 	# route intent
 	graph.add_edge("intent", "sql_search")
 	graph.add_edge("intent", "stats_compute")
+	graph.add_edge("intent", "columns_compute")
 	graph.add_edge("sql_search", "sql_answer")
 	graph.add_edge("sql_answer", "hybrid_search")
 	graph.add_edge("stats_compute", "generate")
+	graph.add_edge("columns_compute", "generate")
 	graph.add_edge("hybrid_search", "generate")
 	graph.add_edge("generate", END)
 	return graph.compile()

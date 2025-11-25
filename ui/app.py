@@ -11,7 +11,7 @@ if _PROJECT_ROOT not in sys.path:
 
 import streamlit as st
 
-from ui.api_client import chat_ingest, chat_process, csv_ingest, csv_process
+from ui.api_client import chat_ingest, chat_process, csv_ingest, csv_process, chats_list, chats_create, chats_messages
 from ui.components import render_answer, render_sources
 
 
@@ -20,85 +20,114 @@ st.title("Agent Server UI")
 
 if "chat_session_id" not in st.session_state:
 	st.session_state["chat_session_id"] = None
-if "chat_history" not in st.session_state:
-	st.session_state["chat_history"] = []  # list of {"role","content"}
+if "chat_id" not in st.session_state:
+	st.session_state["chat_id"] = None
 if "csv_session_id" not in st.session_state:
 	st.session_state["csv_session_id"] = None
+
+# Sidebar: Data ingest (top) and Chat History (bottom)
+with st.sidebar:
+	st.subheader("Data Ingest")
+	with st.expander("Chat Ingest", expanded=False):
+		up_files_sb = st.file_uploader("Upload .txt/.md/.csv for RAG", accept_multiple_files=True, type=["txt", "md", "csv"], key="chat_uploads")
+		col_a, col_b = st.columns([1, 1])
+		with col_a:
+			if st.button("Ingest to Chat Index", key="btn_ingest_chat"):
+				files_payload: List[Tuple[str, Tuple[str, bytes, str]]] = []
+				for f in up_files_sb or []:
+					files_payload.append(("files", (f.name, f.getvalue(), f.type or "application/octet-stream")))
+				with st.spinner("Ingesting..."):
+					resp = chat_ingest(files=files_payload or None)
+				st.session_state["chat_session_id"] = resp["session_id"]
+				st.success(f"session_id={resp['session_id']}, chunks={resp['doc_count']}")
+		with col_b:
+			if st.button("Reset Chat Session", key="btn_reset_chat_session"):
+				st.session_state["chat_session_id"] = None
+				st.info("Chat session reset.")
+
+	with st.expander("CSV/Folder Ingest", expanded=False):
+		csv_files_sb = st.file_uploader("Upload CSV/TXT/MD files", accept_multiple_files=True, type=["csv", "txt", "md"], key="csv_files_sb")
+		zip_file_sb = st.file_uploader("Or upload a folder ZIP", type=["zip"], key="zip_upload_sb")
+		if st.button("Ingest CSV/Folder", key="btn_ingest_csv"):
+			files_payload: List[Tuple[str, Tuple[str, bytes, str]]] = []
+			for f in csv_files_sb or []:
+				files_payload.append(("files", (f.name, f.getvalue(), f.type or "application/octet-stream")))
+			zip_payload = None
+			if zip_file_sb is not None:
+				zip_payload = (zip_file_sb.name, zip_file_sb.getvalue(), zip_file_sb.type or "application/zip")
+			with st.spinner("Ingesting..."):
+				resp = csv_ingest(files=files_payload or None, folder_zip=zip_payload)
+			st.session_state["csv_session_id"] = resp["session_id"]
+			st.success(f"CSV session_id={resp['session_id']}, chunks={resp['doc_count']}")
+
+	st.subheader("Chat History")
+	chats = []
+	try:
+		chats = chats_list()
+	except Exception:
+		st.warning("Failed to load chat list.")
+	chat_labels = [(c.get("title") or c.get("chat_id")) for c in chats]
+	selected_idx = None
+	if chats:
+		try:
+			selected_idx = st.selectbox("Select a conversation", options=list(range(len(chats))), format_func=lambda i: chat_labels[i], index=0 if st.session_state.get("chat_id") is None else next((i for i, c in enumerate(chats) if c.get("chat_id") == st.session_state.get("chat_id")), 0))
+			st.session_state["chat_id"] = chats[selected_idx].get("chat_id")
+		except Exception:
+			pass
+	col_new1, col_new2 = st.columns([1, 1])
+	with col_new1:
+		if st.button("New Chat"):
+			try:
+				created = chats_create(session_id=st.session_state.get("chat_session_id"), title=None)
+				st.session_state["chat_id"] = created.get("chat_id")
+				st.success(f"Created chat {st.session_state['chat_id']}")
+			except Exception:
+				st.error("Failed to create chat.")
+	with col_new2:
+		if st.button("Refresh Chats"):
+			st.experimental_rerun()
 
 tab_chat, tab_csv = st.tabs(["Chat", "CSV/Folder"])
 
 with tab_chat:
-	st.subheader("Chat with optional RAG")
-	up_files = st.file_uploader("Upload .txt/.md/.csv for RAG (optional)", accept_multiple_files=True, type=["txt", "md", "csv"])
-	col_ing1, col_ing2 = st.columns([1, 4])
-	with col_ing1:
-		if st.button("Ingest to Chat Index"):
-			files_payload: List[Tuple[str, Tuple[str, bytes, str]]] = []
-			for f in up_files or []:
-				files_payload.append(("files", (f.name, f.getvalue(), f.type or "application/octet-stream")))
-			with st.spinner("Ingesting..."):
-				resp = chat_ingest(files=files_payload or None)
-			st.session_state["chat_session_id"] = resp["session_id"]
-			st.success(f"Ingested {resp['doc_count']} chunks. session_id={resp['session_id']}")
-	with col_ing2:
-		if st.button("Reset Chat Session"):
-			st.session_state["chat_session_id"] = None
-			st.info("Chat session reset.")
+	st.subheader("Chat")
+	chat_id = st.session_state.get("chat_id")
+	if not chat_id:
+		st.info("Select a conversation from the sidebar or create a new chat.")
+	else:
+		# Load and render messages
+		msgs = []
+		try:
+			msgs = chats_messages(chat_id=chat_id, limit=200)
+		except Exception:
+			st.warning("Failed to load messages.")
+		# Render messages
+		for m in msgs:
+			role = (m.get("role") or "").lower()
+			content = m.get("content") or ""
+			if hasattr(st, "chat_message"):
+				with st.chat_message(role if role in {"user", "assistant"} else "assistant"):
+					st.markdown(content)
+			else:
+				st.markdown(f"**{(role or 'assistant').title()}**: {content}")
 
-	with st.form("chat_form", clear_on_submit=False):
-		system_prompt = st.text_area("System Prompt", value="You are a helpful assistant.", height=80)
-		query = st.text_area("Your Question", height=120)
-		c1, c2, c3 = st.columns([1, 1, 2])
-		with c1:
-			k = st.number_input("Top-k", min_value=1, max_value=20, value=5, step=1)
-		with c2:
-			model_id = st.text_input("Model Override", value="")
-		submitted = st.form_submit_button("Ask")
-
-	if submitted and query.strip():
-		with st.spinner("Thinking..."):
-			resp = chat_process(
-				query=query,
-				session_id=st.session_state["chat_session_id"],
-				k=int(k),
-				system_prompt=system_prompt or None,
-				model_id=model_id or None,
-			)
-		# append to history
-		st.session_state["chat_history"].append({"role": "user", "content": query})
-		st.session_state["chat_history"].append({"role": "assistant", "content": resp.get("answer", "")})
-		render_answer(resp.get("answer", ""))
-		render_sources(resp.get("sources"))
-
-	if st.session_state["chat_history"]:
-		with st.expander("Conversation History", expanded=False):
-			for msg in st.session_state["chat_history"][-20:]:
-				st.markdown(f"**{msg['role'].title()}**: {msg['content']}")
-	if st.button("Clear Conversation"):
-		st.session_state["chat_history"] = []
-		st.success("Conversation cleared.")
+		# Single input field; submit on Enter (no Ask button, no extra fields)
+		user_text = st.chat_input("메시지를 입력하세요")
+		if user_text and user_text.strip():
+			with st.spinner("Thinking..."):
+				_ = chat_process(
+					query=user_text.strip(),
+					session_id=st.session_state.get("chat_session_id"),
+					chat_id=st.session_state.get("chat_id"),
+				)
+			if hasattr(st, "rerun"):
+				st.rerun()
+			elif hasattr(st, "experimental_rerun"):
+				st.experimental_rerun()
 
 with tab_csv:
 	st.subheader("CSV / Folder Pipeline")
-	cu, zu = st.columns([3, 2])
-	with cu:
-		csv_files = st.file_uploader("Upload CSV/TXT/MD files", accept_multiple_files=True, type=["csv", "txt", "md"], key="csv_files")
-	with zu:
-		zip_file = st.file_uploader("Or upload a folder ZIP", type=["zip"], key="zip_upload")
-
-	ing_col1, _ = st.columns([1, 5])
-	with ing_col1:
-		if st.button("Ingest CSV/Folder"):
-			files_payload: List[Tuple[str, Tuple[str, bytes, str]]] = []
-			for f in csv_files or []:
-				files_payload.append(("files", (f.name, f.getvalue(), f.type or "application/octet-stream")))
-			zip_payload = None
-			if zip_file is not None:
-				zip_payload = (zip_file.name, zip_file.getvalue(), zip_file.type or "application/zip")
-			with st.spinner("Ingesting..."):
-				resp = csv_ingest(files=files_payload or None, folder_zip=zip_payload)
-			st.session_state["csv_session_id"] = resp["session_id"]
-			st.success(f"Ingested {resp['doc_count']} chunks. session_id={resp['session_id']}")
+	st.info("Use the sidebar to ingest CSV/Folder data. Then run processing below.")
 
 	with st.form("csv_form", clear_on_submit=False):
 		query2 = st.text_area("Task / Question", height=120)

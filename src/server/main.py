@@ -19,6 +19,7 @@ from src.rag.local import LocalRAG
 from src.ingestion.sql_store import store_chunks
 from src.ingestion.analyze import analyze_and_store_schema
 from src.agents.db_context import refresh_session_profile
+from src.history.store import create_chat, list_chats as db_list_chats, list_messages as db_list_messages, append_message as db_append_message, get_chat as db_get_chat, update_chat_session as db_update_chat_session
 
 app = FastAPI(title="Agent Server (MVP)", version="0.1.0")
 logger = get_logger(__name__)
@@ -41,17 +42,44 @@ csv_app = build_csv_graph()
 
 @router.post("/apps/chat/process", response_model=ChatProcessResponse)
 async def process_chat(req: ChatProcessRequest):
+	# Resolve or create chat
+	chat_id = req.chat_id
+	chat_row = None
+	if chat_id:
+		chat_row = db_get_chat(chat_id)
+	if not chat_row:
+		created = create_chat(session_id=req.session_id or None, title=None)
+		chat_id = created["chat_id"]
+		chat_row = created
+	# If session_id provided and chat lacks one, persist it
+	if req.session_id and not (chat_row or {}).get("session_id"):
+		db_update_chat_session(chat_id, req.session_id)
+		chat_row = db_get_chat(chat_id) or chat_row
+	# Load history messages (without system)
+	history = [{"role": m["role"], "content": m["content"]} for m in db_list_messages(chat_id=chat_id, limit=100)]
+	# Build state
 	state = {
 		"query": req.query,
 		"system_prompt": req.system_prompt or "You are a helpful assistant.",
 		"model_id": req.model_id or settings.LLM_MODEL_ID,
-		"session_id": req.session_id or None,
+		"session_id": (req.session_id or (chat_row or {}).get("session_id")) or None,
 		"k": req.k or 5,
 		"retrieval_mode": req.retrieval_mode or None,
+		"history_messages": history,
 	}
 	logger.info({"event": "chat_process_start", "model_id": state["model_id"]})
+	# Persist incoming user message
+	try:
+		db_append_message(chat_id=chat_id, role="user", content=req.query)
+	except Exception:
+		logger.exception("chat_history_append_user_failed")
 	result = await chat_app.ainvoke(state)
 	logger.info({"event": "chat_process_end"})
+	# Persist assistant message
+	try:
+		db_append_message(chat_id=chat_id, role="assistant", content=result.get("answer", ""))
+	except Exception:
+		logger.exception("chat_history_append_assistant_failed")
 	# Build sources from both hybrid docs and SQL summary (if any)
 	sources = [{"source": d.get("metadata", {}).get("file"), "text": d.get("text")} for d in result.get("retrieved", [])]
 	if result.get("sql_summary"):
@@ -60,11 +88,14 @@ async def process_chat(req: ChatProcessRequest):
 		sources.append({"source": "sql_answer", "text": result.get("sql_answer_text")})
 	if result.get("stats_summary"):
 		sources.append({"source": "stats", "text": result.get("stats_summary")})
+	if result.get("columns_summary"):
+		sources.append({"source": "columns", "text": result.get("columns_summary")})
 	return ChatProcessResponse(
 		answer=result.get("answer", ""),
 		model_id=state["model_id"],
 		sources=sources or None,
 		meta={"tokens": None, "intent_mode": result.get("intent_mode")},
+		chat_id=chat_id,
 	)
 
 
@@ -212,6 +243,29 @@ async def get_file(session_id: str, filepath: str):
 	if not target.exists() or not target.is_file():
 		return JSONResponse({"detail": "Not found"}, status_code=HTTP_404_NOT_FOUND)
 	return FileResponse(str(target))
+
+
+# ----- Chat history endpoints -----
+from src.schemas.api import ChatCreateRequest, ChatCreateResponse, ChatListResponse, ChatListItem, ChatMessagesResponse, ChatMessage
+
+
+@router.post("/chats", response_model=ChatCreateResponse)
+async def create_chat_api(req: ChatCreateRequest):
+	row = create_chat(session_id=req.session_id or None, title=req.title or None)
+	return ChatCreateResponse(**row)
+
+
+@router.get("/chats", response_model=ChatListResponse)
+async def list_chats_api():
+	items = [ChatListItem(**r) for r in db_list_chats(limit=200)]
+	return ChatListResponse(chats=items)
+
+
+@router.get("/chats/{chat_id}/messages", response_model=ChatMessagesResponse)
+async def get_chat_messages_api(chat_id: str, limit: int = 100):
+	rows = db_list_messages(chat_id=chat_id, limit=limit)
+	msgs = [ChatMessage(role=r["role"], content=r["content"], created_at=r["created_at"]) for r in rows]
+	return ChatMessagesResponse(chat_id=chat_id, messages=msgs)
 
 
 app.include_router(router)

@@ -33,10 +33,12 @@ def chat_ingest(files: List[Tuple[str, Tuple[str, bytes, str]]] | None = None, f
 		return resp.json()
 
 
-def chat_process(query: str, session_id: Optional[str] = None, k: Optional[int] = 5, system_prompt: Optional[str] = None, model_id: Optional[str] = None) -> Dict[str, Any]:
+def chat_process(query: str, session_id: Optional[str] = None, k: Optional[int] = 5, system_prompt: Optional[str] = None, model_id: Optional[str] = None, chat_id: Optional[str] = None) -> Dict[str, Any]:
 	payload: Dict[str, Any] = {"query": query}
 	if session_id:
 		payload["session_id"] = session_id
+	if chat_id:
+		payload["chat_id"] = chat_id
 	if k is not None:
 		payload["k"] = k
 	if system_prompt:
@@ -71,5 +73,33 @@ def csv_process(session_id: str, query: str, k: Optional[int] = 5, model_id: Opt
 		resp = c.post("/api/v1/apps/csv/process", json=payload)
 		resp.raise_for_status()
 		return resp.json()
+
+
+def chats_create(session_id: Optional[str] = None, title: Optional[str] = None) -> Dict[str, Any]:
+	payload: Dict[str, Any] = {}
+	if session_id:
+		payload["session_id"] = session_id
+	if title:
+		payload["title"] = title
+	with _client() as c:
+		resp = c.post("/api/v1/chats", json=payload or {})
+		resp.raise_for_status()
+		return resp.json()
+
+
+def chats_list() -> List[Dict[str, Any]]:
+	with _client() as c:
+		resp = c.get("/api/v1/chats")
+		resp.raise_for_status()
+		data = resp.json() or {}
+		return list(data.get("chats", []))
+
+
+def chats_messages(chat_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+	with _client() as c:
+		resp = c.get(f"/api/v1/chats/{chat_id}/messages", params={"limit": limit})
+		resp.raise_for_status()
+		data = resp.json() or {}
+		return list(data.get("messages", []))
 
 

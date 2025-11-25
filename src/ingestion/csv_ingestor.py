@@ -100,7 +100,18 @@ def csv_to_chunks(file_path: str | Path, max_chars_per_chunk: int = 2000) -> Lis
 	chunks: List[Dict[str, Any]] = []
 	for i, row in df.iterrows():
 		# build structured mapping for SQL normalization
-		structured = {str(col): ("" if pd.isna(row[col]) else str(row[col])) for col in df.columns}
+		# Use positional lookup to avoid Series ambiguity when duplicate column names exist
+		structured: Dict[str, Any] = {}
+		for idx, col in enumerate(list(df.columns)):
+			try:
+				val = row.iloc[idx]
+			except Exception:
+				# Fallback to label-based as a last resort
+				val = row.get(col, None)
+			if val is None or (pd.isna(val) if not isinstance(val, (list, tuple, dict)) else False):
+				structured[str(col)] = ""
+			else:
+				structured[str(col)] = str(val)
 		row_text = ", ".join([f"{col}: {structured[str(col)]}" for col in df.columns])
 		# simple splitting for long rows
 		parts = [row_text[j : j + max_chars_per_chunk] for j in range(0, len(row_text), max_chars_per_chunk)]
