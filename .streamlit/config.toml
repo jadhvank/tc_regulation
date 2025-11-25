@@ -1,0 +1,7 @@
+[server]
+address = "0.0.0.0"
+port = 18266
+enableXsrfProtection = true
+maxUploadSize = 512
+
+
