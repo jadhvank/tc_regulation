@@ -17,6 +17,17 @@ from ui.components import render_answer, render_sources
 
 st.set_page_config(page_title="Agent Server UI", layout="wide")
 st.title("Agent Server UI")
+st.markdown(
+	"""
+	<style>
+		/* Hide avatars for user/assistant chat bubbles */
+		[data-testid="stChatMessageAvatar"] { display: none !important; }
+		/* Reclaim space where avatar would be */
+		[data-testid="stChatMessage"] { grid-template-columns: 0 1fr !important; }
+	</style>
+	""",
+	unsafe_allow_html=True,
+)
 
 if "chat_session_id" not in st.session_state:
 	st.session_state["chat_session_id"] = None
@@ -32,7 +43,7 @@ with st.sidebar:
 		up_files_sb = st.file_uploader("Upload .txt/.md/.csv for RAG", accept_multiple_files=True, type=["txt", "md", "csv"], key="chat_uploads")
 		col_a, col_b = st.columns([1, 1])
 		with col_a:
-			if st.button("Ingest to Chat Index", key="btn_ingest_chat"):
+			if st.button("Ingest", key="btn_ingest_chat"):
 				files_payload: List[Tuple[str, Tuple[str, bytes, str]]] = []
 				for f in up_files_sb or []:
 					files_payload.append(("files", (f.name, f.getvalue(), f.type or "application/octet-stream")))
@@ -41,7 +52,7 @@ with st.sidebar:
 				st.session_state["chat_session_id"] = resp["session_id"]
 				st.success(f"session_id={resp['session_id']}, chunks={resp['doc_count']}")
 		with col_b:
-			if st.button("Reset Chat Session", key="btn_reset_chat_session"):
+			if st.button("Reset", key="btn_reset_chat_session"):
 				st.session_state["chat_session_id"] = None
 				st.info("Chat session reset.")
 
@@ -84,7 +95,7 @@ with st.sidebar:
 			except Exception:
 				st.error("Failed to create chat.")
 	with col_new2:
-		if st.button("Refresh Chats"):
+		if st.button("Refresh"):
 			st.experimental_rerun()
 
 tab_chat, tab_csv = st.tabs(["Chat", "CSV/Folder"])
@@ -105,11 +116,7 @@ with tab_chat:
 		for m in msgs:
 			role = (m.get("role") or "").lower()
 			content = m.get("content") or ""
-			if hasattr(st, "chat_message"):
-				with st.chat_message(role if role in {"user", "assistant"} else "assistant"):
-					st.markdown(content)
-			else:
-				st.markdown(f"**{(role or 'assistant').title()}**: {content}")
+			st.markdown(f"**{(role or 'assistant').title()}**: {content}")
 
 		# Single input field; submit on Enter (no Ask button, no extra fields)
 		user_text = st.chat_input("메시지를 입력하세요")
