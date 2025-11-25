@@ -20,6 +20,8 @@ class Settings(BaseSettings):
 	HYBRID_SEARCH_ENABLED: bool = Field(default=True)
 	SQL_AGENT_ENABLED: bool = Field(default=True)
 	SQL_MAX_ROWS: int = Field(default=200)
+	DB_CONTEXT_ENABLED: bool = Field(default=True)
+	DB_CONTEXT_MAX_TOKENS: int = Field(default=512)
 	CORS_ORIGINS: str = Field(default="*")  # comma-separated or '*'
 
 	model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

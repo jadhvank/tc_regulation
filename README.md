@@ -56,6 +56,8 @@ Key variables:
 - SQLITE_DB_PATH (default: ./data/indices/sqlite/app.db)
 - SQL_AGENT_ENABLED (default: true)
 - SQL_MAX_ROWS (default: 200)
+- DB_CONTEXT_ENABLED (default: true)
+- DB_CONTEXT_MAX_TOKENS (default: 512)
 
 ## API
 - GET `/api/v1/health`
@@ -88,6 +90,9 @@ Key variables:
   - Generates safe SELECT-only SQLite for tables: `schema_columns`, `files`, `rows`, `fts_rows` (scoped by `session_id`).
   - Enforces read-only, injects LIMIT (default `SQL_MAX_ROWS`), times out on long queries.
   - Adds a compact SQL summary to context; responses include a `sql` source entry.
+- DB context:
+  - A compact per-session summary of files, columns and types, and row counts.
+  - Used to bias intent classification and included as a `[DB]` section in prompts.
 
 ## Tests
 ```bash

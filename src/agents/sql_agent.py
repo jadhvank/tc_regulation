@@ -30,15 +30,47 @@ def _inject_limit(stmt: str, limit: int) -> str:
 	return f"{stmt} LIMIT {int(limit)}"
 
 
+def _strip_code_fences(text: str) -> str:
+	lines = []
+	skip = False
+	for ln in (text or "").splitlines():
+		if ln.strip().startswith("```"):
+			# toggle; drop fence lines
+			skip = not skip
+			continue
+		lines.append(ln)
+	return "\n".join(lines)
+
+
+def _extract_select(raw: str) -> str | None:
+	if not raw:
+		return None
+	text = _strip_code_fences(raw).strip()
+	m = re.search(r"select\\b[\\s\\S]*", text, re.IGNORECASE)
+	if not m:
+		return None
+	stmt = m.group(0).strip()
+	# Stop at first standalone semicolon if present
+	semi = stmt.find(";")
+	if semi != -1:
+		stmt = stmt[:semi]
+	return stmt
+
+
 async def generate_sql(question: str, session_id: str) -> str:
 	"""
 	Generate a SQLite SELECT for our schema (schema_columns, files, rows, fts_rows).
 	Always filter by session_id.
 	"""
 	system = (
-		"You write only safe SQLite SELECT queries for tables: schema_columns(session_id,file_id,col_name,inferred_type,position), "
-		"files(id,session_id,filename), rows(session_id,file_id,row_index,data_json,chunk_id), fts_rows(text,session_id,file_id,row_index,chunk_id). "
-		"Constraints: Use WHERE session_id = '{session_id}'. No PRAGMA/ATTACH/DDL/DML. Return only SQL, no prose."
+		"You write only safe SQLite SELECT queries for tables: "
+		"schema_columns(session_id,file_id,col_name,inferred_type,position), "
+		"files(id,session_id,filename), "
+		"rows(session_id,file_id,row_index,data_json,chunk_id), "
+		"fts_rows(text,session_id,file_id,row_index,chunk_id), "
+		"row_kv(session_id,file_id,row_index,col_name,value_text). "
+		"For statistics and counts, prefer row_kv with GROUP BY col_name,value_text. "
+		"Constraints: Use WHERE session_id = '{session_id}'. No PRAGMA/ATTACH/DDL/DML. Return only SQL, start with SELECT, no prose, no backticks."
 	).replace("{session_id}", session_id.replace("'", "''"))
 	msgs = [
 		{"role": "system", "content": system},
@@ -69,8 +101,16 @@ def _execute_sql(sql: str) -> Tuple[List[str], List[List[Any]], int]:
 async def run_sql(question: str, session_id: str) -> Dict[str, Any]:
 	settings = get_settings()
 	raw = await generate_sql(question=question, session_id=session_id)
-	stmt = _enforce_select_only(raw)
-	stmt = _inject_limit(stmt, settings.SQL_MAX_ROWS)
+	# Try to extract a SELECT statement from the model output
+	stmt_candidate = _extract_select(raw)
+	if not stmt_candidate:
+		return {"sql": None, "error": "no_select_statement_generated"}
+	# Enforce safety and limit; wrap in try to avoid raising to graph
+	try:
+		stmt = _enforce_select_only(stmt_candidate)
+		stmt = _inject_limit(stmt, settings.SQL_MAX_ROWS)
+	except Exception as e:
+		return {"sql": stmt_candidate, "error": f"{e.__class__.__name__}: {e}"}
 
 	async def _run():
 		return _execute_sql(stmt)

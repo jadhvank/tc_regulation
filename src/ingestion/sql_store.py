@@ -56,6 +56,17 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 		CREATE INDEX IF NOT EXISTS idx_rows_file ON rows(file_id);
 		CREATE INDEX IF NOT EXISTS idx_rows_chunk ON rows(chunk_id);
 
+		CREATE TABLE IF NOT EXISTS row_kv (
+			session_id TEXT NOT NULL,
+			file_id INTEGER NOT NULL,
+			row_index INTEGER NOT NULL,
+			col_name TEXT NOT NULL,
+			value_text TEXT
+		);
+		CREATE INDEX IF NOT EXISTS idx_row_kv_session ON row_kv(session_id);
+		CREATE INDEX IF NOT EXISTS idx_row_kv_session_col ON row_kv(session_id, col_name);
+		CREATE INDEX IF NOT EXISTS idx_row_kv_session_col_val ON row_kv(session_id, col_name, value_text);
+
 		CREATE VIRTUAL TABLE IF NOT EXISTS fts_rows USING fts5(
 			text,
 			session_id UNINDEXED,
@@ -135,6 +146,14 @@ def store_chunks(session_id: str, chunks: List[Dict[str, Any]]) -> int:
 				"INSERT INTO fts_rows(text, session_id, file_id, row_index, chunk_id) VALUES (?, ?, ?, ?, ?)",
 				(ch.get("text", ""), session_id, file_id, row_index, chunk_id),
 			)
+			# store structured key-values for statistics (only once per original row)
+			structured = ch.get("structured", None)
+			if structured and row_index is not None:
+				for col_name, value in structured.items():
+					conn.execute(
+						"INSERT INTO row_kv(session_id, file_id, row_index, col_name, value_text) VALUES (?, ?, ?, ?, ?)",
+						(session_id, file_id, int(row_index), str(col_name), None if value is None else str(value)),
+					)
 			inserted += 1
 		conn.commit()
 		return inserted
@@ -145,26 +164,74 @@ def store_chunks(session_id: str, chunks: List[Dict[str, Any]]) -> int:
 def search_fts(session_id: str, query: str, k: int = 5) -> List[Dict[str, Any]]:
 	conn = _get_conn()
 	try:
-		cur = conn.execute(
-			"""
-			SELECT rowid, text, session_id, file_id, row_index, chunk_id, bm25(fts_rows) AS score
-			FROM fts_rows
-			WHERE session_id = ? AND fts_rows MATCH ?
-			ORDER BY score LIMIT ?
-			""",
-			(session_id, query, max(1, k)),
-		)
+		def _fts_safe(q: str) -> str:
+			# split on whitespace, drop empty tokens, quote each token for MATCH
+			toks = [t.strip().strip('"').strip("'") for t in (q or "").split() if t.strip()]
+			if not toks:
+				return ""
+			return " OR ".join([f'"{t}"' for t in toks])
+
+		safe_query = _fts_safe(query)
 		out: List[Dict[str, Any]] = []
-		for r in cur.fetchall():
-			out.append(
-				{
-					"text": r["text"],
-					"metadata": {"file_id": r["file_id"], "row_index": r["row_index"]},
-					"id": r["chunk_id"],
-					"score": r["score"],
-				}
+		if safe_query:
+			try:
+				cur = conn.execute(
+					"""
+					SELECT rowid, text, session_id, file_id, row_index, chunk_id, bm25(fts_rows) AS score
+					FROM fts_rows
+					WHERE session_id = ? AND fts_rows MATCH ?
+					ORDER BY score LIMIT ?
+					""",
+					(session_id, safe_query, max(1, k)),
+				)
+				for r in cur.fetchall():
+					out.append(
+						{
+							"text": r["text"],
+							"metadata": {"file_id": r["file_id"], "row_index": r["row_index"]},
+							"id": r["chunk_id"],
+							"score": r["score"],
+						}
+					)
+			except Exception:
+				# fall back to LIKE search if MATCH fails due to syntax
+				pass
+		# fallback or empty safe query: basic LIKE search
+		if not out:
+			cur = conn.execute(
+				"""
+				SELECT rowid, text, session_id, file_id, row_index, chunk_id
+				FROM fts_rows
+				WHERE session_id = ? AND text LIKE ?
+				LIMIT ?
+				""",
+				(session_id, f"%{query}%", max(1, k)),
 			)
+			for r in cur.fetchall():
+				out.append(
+					{
+						"text": r["text"],
+						"metadata": {"file_id": r["file_id"], "row_index": r["row_index"]},
+						"id": r["chunk_id"],
+						"score": None,
+					}
+				)
 		return out
+	finally:
+		conn.close()
+
+
+def has_session_data(session_id: str) -> bool:
+	"""
+	Return True if any files or rows are present for the given session.
+	"""
+	conn = _get_conn()
+	try:
+		row = conn.execute("SELECT 1 FROM files WHERE session_id = ? LIMIT 1", (session_id,)).fetchone()
+		if row:
+			return True
+		row = conn.execute("SELECT 1 FROM rows WHERE session_id = ? LIMIT 1", (session_id,)).fetchone()
+		return row is not None
 	finally:
 		conn.close()
 

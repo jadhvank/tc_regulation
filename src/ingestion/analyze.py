@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.ingestion.sql_store import insert_schema_columns
+from src.ingestion.csv_ingestor import _read_csv_with_smart_header
 
 
 _PANDAS_TO_SIMPLE = {
@@ -28,7 +29,10 @@ def analyze_csv_file(file_path: str | Path) -> List[Dict[str, Any]]:
 	Returns: [{ name, type, position }]
 	"""
 	file_path = Path(file_path)
-	df = pd.read_csv(file_path, on_bad_lines="skip", encoding_errors="ignore")
+	try:
+		df = _read_csv_with_smart_header(file_path)
+	except Exception:
+		df = pd.read_csv(file_path, on_bad_lines="skip", encoding_errors="ignore")
 	schema: List[Dict[str, Any]] = []
 	for idx, col in enumerate(df.columns):
 		schema.append({"name": str(col), "type": _infer_type_from_series(df[col]), "position": idx})

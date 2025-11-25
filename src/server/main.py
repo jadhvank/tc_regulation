@@ -18,6 +18,7 @@ from src.ingestion.fs_ingestor import unzip_to_folder, folder_to_chunks
 from src.rag.local import LocalRAG
 from src.ingestion.sql_store import store_chunks
 from src.ingestion.analyze import analyze_and_store_schema
+from src.agents.db_context import refresh_session_profile
 
 app = FastAPI(title="Agent Server (MVP)", version="0.1.0")
 logger = get_logger(__name__)
@@ -55,6 +56,10 @@ async def process_chat(req: ChatProcessRequest):
 	sources = [{"source": d.get("metadata", {}).get("file"), "text": d.get("text")} for d in result.get("retrieved", [])]
 	if result.get("sql_summary"):
 		sources.append({"source": "sql", "text": result.get("sql_summary")})
+	if result.get("sql_answer_text"):
+		sources.append({"source": "sql_answer", "text": result.get("sql_answer_text")})
+	if result.get("stats_summary"):
+		sources.append({"source": "stats", "text": result.get("stats_summary")})
 	return ChatProcessResponse(
 		answer=result.get("answer", ""),
 		model_id=state["model_id"],
@@ -100,6 +105,11 @@ async def ingest_chat(files: Optional[List[UploadFile]] = File(default=None), fo
 				analyze_and_store_schema(session_id=session_id, file_path=p)
 			except Exception:
 				logger.exception("schema_analysis_failed")
+		# refresh session DB profile
+		try:
+			refresh_session_profile(session_id=session_id)
+		except Exception:
+			logger.exception("db_context_refresh_failed")
 		rag = LocalRAG()
 		if chunks:
 			await rag.build_index(session_id=session_id, chunks=chunks)
@@ -145,6 +155,11 @@ async def ingest_csv(files: Optional[List[UploadFile]] = File(default=None), fol
 				analyze_and_store_schema(session_id=session_id, file_path=p)
 			except Exception:
 				logger.exception("csv_schema_analysis_failed")
+		# refresh session DB profile
+		try:
+			refresh_session_profile(session_id=session_id)
+		except Exception:
+			logger.exception("db_context_refresh_failed")
 		rag = LocalRAG()
 		if chunks:
 			await rag.build_index(session_id=session_id, chunks=chunks)
