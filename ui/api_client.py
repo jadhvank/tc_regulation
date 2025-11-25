@@ -1,0 +1,75 @@
+import os
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
+
+
+def _get_api_base() -> str:
+	# Prefer Streamlit secrets if available; fallback to env; else default
+	try:
+		import streamlit as st  # type: ignore
+
+		if "API_BASE_URL" in st.secrets:
+			return str(st.secrets["API_BASE_URL"])
+	except Exception:
+		pass
+	return os.getenv("API_BASE_URL", "http://localhost:8000")
+
+
+def _client() -> httpx.Client:
+	return httpx.Client(base_url=_get_api_base(), timeout=60)
+
+
+def chat_ingest(files: List[Tuple[str, Tuple[str, bytes, str]]] | None = None, folder_zip: Optional[Tuple[str, bytes, str]] = None) -> Dict[str, Any]:
+	multipart: List[Tuple[str, Tuple[str, bytes, str]]] = []
+	for item in files or []:
+		# item should be ("files", (filename, content_bytes, mime))
+		multipart.append(item)
+	if folder_zip:
+		multipart.append(("folder_zip", folder_zip))
+	with _client() as c:
+		resp = c.post("/api/v1/apps/chat/ingest", files=multipart or None)
+		resp.raise_for_status()
+		return resp.json()
+
+
+def chat_process(query: str, session_id: Optional[str] = None, k: Optional[int] = 5, system_prompt: Optional[str] = None, model_id: Optional[str] = None) -> Dict[str, Any]:
+	payload: Dict[str, Any] = {"query": query}
+	if session_id:
+		payload["session_id"] = session_id
+	if k is not None:
+		payload["k"] = k
+	if system_prompt:
+		payload["system_prompt"] = system_prompt
+	if model_id:
+		payload["model_id"] = model_id
+	with _client() as c:
+		resp = c.post("/api/v1/apps/chat/process", json=payload)
+		resp.raise_for_status()
+		return resp.json()
+
+
+def csv_ingest(files: List[Tuple[str, Tuple[str, bytes, str]]] | None = None, folder_zip: Optional[Tuple[str, bytes, str]] = None) -> Dict[str, Any]:
+	multipart: List[Tuple[str, Tuple[str, bytes, str]]] = []
+	for item in files or []:
+		multipart.append(item)
+	if folder_zip:
+		multipart.append(("folder_zip", folder_zip))
+	with _client() as c:
+		resp = c.post("/api/v1/apps/csv/ingest", files=multipart or None)
+		resp.raise_for_status()
+		return resp.json()
+
+
+def csv_process(session_id: str, query: str, k: Optional[int] = 5, model_id: Optional[str] = None) -> Dict[str, Any]:
+	payload: Dict[str, Any] = {"session_id": session_id, "query": query}
+	if k is not None:
+		payload["k"] = k
+	if model_id:
+		payload["model_id"] = model_id
+	with _client() as c:
+		resp = c.post("/api/v1/apps/csv/process", json=payload)
+		resp.raise_for_status()
+		return resp.json()
+
+
