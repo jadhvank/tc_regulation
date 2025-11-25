@@ -3,12 +3,31 @@ import pandas as pd
 from pathlib import Path
 
 
+def _read_csv_best_effort(file_path: Path) -> pd.DataFrame:
+	"""
+	Try multiple encodings commonly used in KR/legacy files to avoid UnicodeDecodeError.
+	Fallback to latin1 if UTF-8 and CP949/EUC-KR fail. Skip bad lines to be robust.
+	"""
+	last_err: Exception | None = None
+	for enc in ["utf-8", "cp949", "euc-kr", "latin1"]:
+		try:
+			return pd.read_csv(file_path, encoding=enc, on_bad_lines="skip")
+		except Exception as e:
+			last_err = e
+			continue
+	# If all attempts failed, re-raise the last error
+	if last_err:
+		raise last_err
+	# Should not reach here
+	return pd.read_csv(file_path)
+
+
 def csv_to_chunks(file_path: str | Path, max_chars_per_chunk: int = 2000) -> List[Dict[str, Any]]:
 	"""
 	Read a CSV file and turn each row into a text chunk with metadata.
 	"""
 	file_path = Path(file_path)
-	df = pd.read_csv(file_path)
+	df = _read_csv_best_effort(file_path)
 	chunks: List[Dict[str, Any]] = []
 	for i, row in df.iterrows():
 		row_text = ", ".join([f"{col}: {row[col]}" for col in df.columns])

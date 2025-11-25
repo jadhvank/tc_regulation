@@ -9,4 +9,6 @@ __pycache__/
 .idea/
 .vscode/
 
+local_ignore/
+
 

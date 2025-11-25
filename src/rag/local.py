@@ -26,17 +26,19 @@ class LocalRAG:
 			# Nothing to index; ensure collection exists and return
 			self._client.get_or_create_collection(name=session_id, metadata={"session_id": session_id})
 			return session_id
+
 		collection = self._client.get_or_create_collection(name=session_id, metadata={"session_id": session_id})
 
-		ids = []
-		texts = []
-		metas = []
+		ids: List[str] = []
+		texts: List[str] = []
+		metas: List[Dict[str, Any]] = []
+
 		for idx, ch in enumerate(chunks):
-		raw_text = ch.get("text", "")
-		text = (raw_text or "").strip()
-		if not text:
-			# Skip empty/whitespace-only chunks to avoid Chroma upsert validation errors
-			continue
+			raw_text = ch.get("text", "")
+			text = (raw_text or "").strip()
+			if not text:
+				# Skip empty/whitespace-only chunks to avoid Chroma upsert validation errors
+				continue
 			meta = ch.get("metadata", {}) or {}
 			doc_id = f"{idx}-{_hash_text(text)[:12]}"
 			ids.append(doc_id)
@@ -45,10 +47,10 @@ class LocalRAG:
 
 		# Upsert can be CPU-bound; run in a thread to avoid blocking the loop if needed
 		def _upsert():
-		# If everything filtered out, ensure collection exists and skip upsert
-		if not ids:
-			return
-		collection.upsert(ids=ids, documents=texts, metadatas=metas)
+			# If everything filtered out, ensure collection exists and skip upsert
+			if not ids:
+				return
+			collection.upsert(ids=ids, documents=texts, metadatas=metas)
 
 		await asyncio.to_thread(_upsert)
 		return session_id
