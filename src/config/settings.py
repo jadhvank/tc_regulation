@@ -10,6 +10,13 @@ class Settings(BaseSettings):
 	OPENAI_BASE: str | None = Field(default=None)
 	ANTHROPIC_API_KEY: str | None = Field(default=None)
 
+	# H Chat (Claude) integration
+	HCHAT_ENABLED: bool = Field(default=False)
+	HCHAT_BASE_URL: str | None = Field(default=None)  # e.g. https://h-chat-api.autoever.com/v2/api
+	HCHAT_API_KEY: str | None = Field(default=None)
+	HCHAT_PROVIDER: str = Field(default="claude")
+	HCHAT_AUTH_STYLE: str | None = Field(default=None)  # bearer | api-key | raw-authorization | None -> both
+
 	LLM_MODEL_ID: str = Field(default="gpt-4o-mini")
 
 	LOG_DIR: str = Field(default="./logs")
