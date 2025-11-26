@@ -110,7 +110,16 @@ def get_config() -> Dict[str, Any]:
 		return resp.json()
 
 
-def update_config(llm_model_id: Optional[str] = None, openai_api_key: Optional[str] = None, anthropic_api_key: Optional[str] = None) -> Dict[str, Any]:
+def update_config(
+	llm_model_id: Optional[str] = None,
+	openai_api_key: Optional[str] = None,
+	anthropic_api_key: Optional[str] = None,
+	hchat_api_key: Optional[str] = None,
+	hchat_enabled: Optional[bool] = None,
+	hchat_base_url: Optional[str] = None,
+	hchat_provider: Optional[str] = None,
+	hchat_auth_style: Optional[str] = None,
+) -> Dict[str, Any]:
 	payload: Dict[str, Any] = {}
 	if llm_model_id:
 		payload["llm_model_id"] = llm_model_id
@@ -118,6 +127,16 @@ def update_config(llm_model_id: Optional[str] = None, openai_api_key: Optional[s
 		payload["openai_api_key"] = openai_api_key
 	if anthropic_api_key:
 		payload["anthropic_api_key"] = anthropic_api_key
+	if hchat_api_key:
+		payload["hchat_api_key"] = hchat_api_key
+	if hchat_enabled is not None:
+		payload["hchat_enabled"] = hchat_enabled
+	if hchat_base_url is not None:
+		payload["hchat_base_url"] = hchat_base_url
+	if hchat_provider is not None:
+		payload["hchat_provider"] = hchat_provider
+	if hchat_auth_style is not None:
+		payload["hchat_auth_style"] = hchat_auth_style
 	with _client() as c:
 		resp = c.post("/api/v1/config", json=payload or {})
 		resp.raise_for_status()

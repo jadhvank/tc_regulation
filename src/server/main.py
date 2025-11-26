@@ -280,6 +280,11 @@ async def get_config_api():
 		llm_model_id=cur.LLM_MODEL_ID,
 		openai_key_set=is_secret_set("OPENAI_API_KEY") or bool(os.getenv("OPENAI_API_KEY")),
 		anthropic_key_set=is_secret_set("ANTHROPIC_API_KEY") or bool(os.getenv("ANTHROPIC_API_KEY")),
+		hchat_enabled=bool(cur.HCHAT_ENABLED),
+		hchat_base_url=cur.HCHAT_BASE_URL,
+		hchat_provider=cur.HCHAT_PROVIDER,
+		hchat_auth_style=cur.HCHAT_AUTH_STYLE,
+		hchat_key_set=is_secret_set("HCHAT_API_KEY") or bool(os.getenv("HCHAT_API_KEY")),
 	)
 
 
@@ -295,6 +300,18 @@ async def update_config_api(req: ConfigUpdateRequest):
 	if req.anthropic_api_key:
 		set_app_secret("ANTHROPIC_API_KEY", req.anthropic_api_key)
 		os.environ["ANTHROPIC_API_KEY"] = req.anthropic_api_key
+	if req.hchat_api_key:
+		set_app_secret("HCHAT_API_KEY", req.hchat_api_key)
+		os.environ["HCHAT_API_KEY"] = req.hchat_api_key
+	# Update H Chat config
+	if req.hchat_enabled is not None:
+		os.environ["HCHAT_ENABLED"] = "true" if req.hchat_enabled else "false"
+	if req.hchat_base_url is not None:
+		os.environ["HCHAT_BASE_URL"] = req.hchat_base_url
+	if req.hchat_provider is not None:
+		os.environ["HCHAT_PROVIDER"] = req.hchat_provider
+	if req.hchat_auth_style is not None:
+		os.environ["HCHAT_AUTH_STYLE"] = req.hchat_auth_style
 	# Clear cached settings to pick up env overrides
 	get_settings.cache_clear()  # type: ignore[attr-defined]
 	cur = get_settings()
@@ -302,6 +319,11 @@ async def update_config_api(req: ConfigUpdateRequest):
 		llm_model_id=cur.LLM_MODEL_ID,
 		openai_key_set=is_secret_set("OPENAI_API_KEY") or bool(os.getenv("OPENAI_API_KEY")),
 		anthropic_key_set=is_secret_set("ANTHROPIC_API_KEY") or bool(os.getenv("ANTHROPIC_API_KEY")),
+		hchat_enabled=bool(cur.HCHAT_ENABLED),
+		hchat_base_url=cur.HCHAT_BASE_URL,
+		hchat_provider=cur.HCHAT_PROVIDER,
+		hchat_auth_style=cur.HCHAT_AUTH_STYLE,
+		hchat_key_set=is_secret_set("HCHAT_API_KEY") or bool(os.getenv("HCHAT_API_KEY")),
 	)
 
 

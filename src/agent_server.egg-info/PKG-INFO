@@ -87,6 +87,23 @@ Key variables:
 - DB_CONTEXT_ENABLED (default: true)
 - DB_CONTEXT_MAX_TOKENS (default: 512)
 
+### H Chat (Claude) via personal API key
+- Enable by env: `HCHAT_ENABLED=true`
+- Configure base URL: `HCHAT_BASE_URL=https://h-chat-api.autoever.com/v2/api`
+- Provide key: `HCHAT_API_KEY=<your_key>`
+- Provider (future-proof): `HCHAT_PROVIDER=claude`
+- Auth style (optional): `HCHAT_AUTH_STYLE=bearer | api-key | raw-authorization` (default sends both bearer+api-key)
+- Set model id (e.g.): `LLM_MODEL_ID=claude-3-5-sonnet-v2`
+- When enabled, all chat completions route to H Chat Claude endpoint (`{HCHAT_BASE_URL}/claude/messages`). Streaming is available internally for future use.
+
+Example models:
+- `LLM_MODEL_ID=claude-haiku-4-5` (matches curl example)
+- Or pass per-request `model_id` in API body for `/api/v1/apps/chat/process`
+
+Refs:
+- H Chat Overview: https://h-chat-docs.autoever.com/en/guide/get-started/overview/
+- H Chat Personal API: https://h-chat-docs.autoever.com/en/guide/pro-only/personal-key/overview/
+
 ## API
 - GET `/api/v1/health`
 - POST `/api/v1/apps/chat/process`

@@ -91,17 +91,32 @@ class ConfigGetResponse(BaseModel):
 	llm_model_id: str
 	openai_key_set: bool
 	anthropic_key_set: bool
+	hchat_enabled: bool
+	hchat_base_url: Optional[str] = None
+	hchat_provider: Optional[str] = None
+	hchat_auth_style: Optional[str] = None
+	hchat_key_set: bool
 
 
 class ConfigUpdateRequest(BaseModel):
 	llm_model_id: Optional[str] = None
 	openai_api_key: Optional[str] = None
 	anthropic_api_key: Optional[str] = None
+	hchat_api_key: Optional[str] = None
+	hchat_enabled: Optional[bool] = None
+	hchat_base_url: Optional[str] = None
+	hchat_provider: Optional[str] = None
+	hchat_auth_style: Optional[str] = None
 
 
 class ConfigUpdateResponse(BaseModel):
 	llm_model_id: str
 	openai_key_set: bool
 	anthropic_key_set: bool
+	hchat_enabled: bool
+	hchat_base_url: Optional[str] = None
+	hchat_provider: Optional[str] = None
+	hchat_auth_style: Optional[str] = None
+	hchat_key_set: bool
 
 

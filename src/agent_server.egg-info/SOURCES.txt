@@ -24,6 +24,7 @@ src/ingestion/csv_ingestor.py
 src/ingestion/fs_ingestor.py
 src/ingestion/sql_store.py
 src/model/__init__.py
+src/model/hchat_client.py
 src/model/litellm_client.py
 src/rag/__init__.py
 src/rag/base.py
@@ -46,6 +47,8 @@ tests/test_columns_agent_and_routing.py
 tests/test_csv_graph.py
 tests/test_csv_korean_stats.py
 tests/test_db_context.py
+tests/test_hchat_client.py
+tests/test_hchat_headers.py
 tests/test_hybrid_rag.py
 tests/test_ingestion.py
 tests/test_intent_sql_agent_and_graph.py

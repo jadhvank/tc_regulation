@@ -199,15 +199,31 @@ with tab_settings:
 	model_current = str(cfg.get("llm_model_id") or "")
 	openai_set = bool(cfg.get("openai_key_set"))
 	anthropic_set = bool(cfg.get("anthropic_key_set"))
+	hchat_enabled_cur = bool(cfg.get("hchat_enabled"))
+	hchat_base_cur = str(cfg.get("hchat_base_url") or "")
+	hchat_provider_cur = str(cfg.get("hchat_provider") or "claude")
+	hchat_auth_style_cur = str(cfg.get("hchat_auth_style") or "")
+	hchat_set = bool(cfg.get("hchat_key_set"))
 
 	c1, c2 = st.columns([2, 2])
 	with c1:
-		new_model = st.text_input("LLM Model ID", value=model_current, help="e.g., gpt-4o-mini")
+		new_model = st.text_input("LLM Model ID", value=model_current, help="e.g., gpt-4o-mini, claude-haiku-4-5")
 	with c2:
-		st.caption(f"OpenAI Key: {'set' if openai_set else 'not set'} | Anthropic Key: {'set' if anthropic_set else 'not set'}")
+		st.caption(f"OpenAI Key: {'set' if openai_set else 'not set'} | Anthropic Key: {'set' if anthropic_set else 'not set'} | H Chat Key: {'set' if hchat_set else 'not set'}")
 
 	openai_key = st.text_input("OPENAI_API_KEY", type="password", value="", help="Leave blank to keep unchanged")
 	anthropic_key = st.text_input("ANTHROPIC_API_KEY", type="password", value="", help="Leave blank to keep unchanged")
+	hchat_key = st.text_input("HCHAT_API_KEY", type="password", value="", help="Leave blank to keep unchanged")
+
+	st.markdown("---")
+	st.markdown("### H Chat")
+	col_h1, col_h2 = st.columns([1, 1])
+	with col_h1:
+		new_hchat_enabled = st.checkbox("Enable H Chat", value=hchat_enabled_cur)
+		new_hchat_base = st.text_input("HCHAT_BASE_URL", value=hchat_base_cur, help="e.g., https://h-chat-api.autoever.com/v2/api")
+	with col_h2:
+		new_hchat_provider = st.text_input("HCHAT_PROVIDER", value=hchat_provider_cur, help="e.g., claude")
+		new_hchat_auth_style = st.selectbox("HCHAT_AUTH_STYLE", options=["", "bearer", "api-key", "raw-authorization"], index=["", "bearer", "api-key", "raw-authorization"].index(hchat_auth_style_cur if hchat_auth_style_cur in ["bearer", "api-key", "raw-authorization"] else ""), help="Empty = send both bearer + api-key")
 
 	if st.button("Save Settings"):
 		ph5 = st.empty()
@@ -220,6 +236,16 @@ with tab_settings:
 			payload["openai_api_key"] = openai_key.strip()
 		if anthropic_key.strip():
 			payload["anthropic_api_key"] = anthropic_key.strip()
+		if hchat_key.strip():
+			payload["hchat_api_key"] = hchat_key.strip()
+		# H Chat config values
+		payload["hchat_enabled"] = bool(new_hchat_enabled)
+		if new_hchat_base != hchat_base_cur:
+			payload["hchat_base_url"] = new_hchat_base
+		if new_hchat_provider != hchat_provider_cur:
+			payload["hchat_provider"] = new_hchat_provider
+		# Note: empty string means default behavior (send both). We still send it to allow clearing.
+		payload["hchat_auth_style"] = new_hchat_auth_style if new_hchat_auth_style != "" else ""
 		_ = update_config(**payload)
 		ph5.empty()
 		if hasattr(st, "rerun"):
