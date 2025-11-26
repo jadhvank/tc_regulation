@@ -15,7 +15,7 @@ from ui.api_client import chat_ingest, chat_process, csv_ingest, csv_process, ch
 from ui.components import render_answer, render_sources
 
 
-st.set_page_config(page_title="Sure Agent", layout="wide")
+st.set_page_config(page_title="Sure Agent", page_icon="🤖", layout="wide")
 st.title("Sure agent")
 st.markdown(
 	"""
@@ -24,6 +24,8 @@ st.markdown(
 		[data-testid="stChatMessageAvatar"] { display: none !important; }
 		/* Reclaim space where avatar would be */
 		[data-testid="stChatMessage"] { grid-template-columns: 0 1fr !important; }
+		/* Hide top running status widget */
+		[data-testid="stStatusWidget"] { display: none !important; }
 	</style>
 	""",
 	unsafe_allow_html=True,
@@ -47,8 +49,11 @@ with st.sidebar:
 				files_payload: List[Tuple[str, Tuple[str, bytes, str]]] = []
 				for f in up_files_sb or []:
 					files_payload.append(("files", (f.name, f.getvalue(), f.type or "application/octet-stream")))
-				with st.spinner("Ingesting..."):
-					resp = chat_ingest(files=files_payload or None)
+				ph = st.empty()
+				with ph.container():
+					st.markdown("Ingesting... ⏳")
+				resp = chat_ingest(files=files_payload or None)
+				ph.empty()
 				st.session_state["chat_session_id"] = resp["session_id"]
 				st.success(f"Success. chunks={resp['doc_count']}")
 		with col_b:
@@ -66,8 +71,11 @@ with st.sidebar:
 			zip_payload = None
 			if zip_file_sb is not None:
 				zip_payload = (zip_file_sb.name, zip_file_sb.getvalue(), zip_file_sb.type or "application/zip")
-			with st.spinner("Ingesting..."):
-				resp = csv_ingest(files=files_payload or None, folder_zip=zip_payload)
+			ph2 = st.empty()
+			with ph2.container():
+				st.markdown("Ingesting CSV/Folder... ⏳")
+			resp = csv_ingest(files=files_payload or None, folder_zip=zip_payload)
+			ph2.empty()
 			st.session_state["csv_session_id"] = resp["session_id"]
 			st.success(f"CSV Success. chunks={resp['doc_count']}")
 
@@ -121,12 +129,15 @@ with tab_chat:
 		# Single input field; submit on Enter (no Ask button, no extra fields)
 		user_text = st.chat_input("메시지를 입력하세요")
 		if user_text and user_text.strip():
-			with st.spinner("Thinking..."):
-				_ = chat_process(
-					query=user_text.strip(),
-					session_id=st.session_state.get("chat_session_id"),
-					chat_id=st.session_state.get("chat_id"),
-				)
+			ph3 = st.empty()
+			with ph3.container():
+				st.markdown("Thinking... ⏳")
+			_ = chat_process(
+				query=user_text.strip(),
+				session_id=st.session_state.get("chat_session_id"),
+				chat_id=st.session_state.get("chat_id"),
+			)
+			ph3.empty()
 			if hasattr(st, "rerun"):
 				st.rerun()
 			elif hasattr(st, "experimental_rerun"):
@@ -149,8 +160,11 @@ with tab_csv:
 		if not st.session_state["csv_session_id"]:
 			st.error("Please ingest files first to create a CSV session.")
 		else:
-			with st.spinner("Processing..."):
-				resp = csv_process(session_id=st.session_state["csv_session_id"], query=query2, k=int(k2), model_id=model2 or None)
+			ph4 = st.empty()
+			with ph4.container():
+				st.markdown("Processing... ⏳")
+			resp = csv_process(session_id=st.session_state["csv_session_id"], query=query2, k=int(k2), model_id=model2 or None)
+			ph4.empty()
 			render_answer(resp.get("answer", ""))
 			render_sources(resp.get("sources"))
 			file_urls = resp.get("file_urls") or []
@@ -196,15 +210,18 @@ with tab_settings:
 	anthropic_key = st.text_input("ANTHROPIC_API_KEY", type="password", value="", help="Leave blank to keep unchanged")
 
 	if st.button("Save Settings"):
-		with st.spinner("Saving..."):
-			payload = {}
-			if new_model and new_model != model_current:
-				payload["llm_model_id"] = new_model
-			if openai_key.strip():
-				payload["openai_api_key"] = openai_key.strip()
-			if anthropic_key.strip():
-				payload["anthropic_api_key"] = anthropic_key.strip()
-			_ = update_config(**payload)
+		ph5 = st.empty()
+		with ph5.container():
+			st.markdown("Saving settings... ⏳")
+		payload = {}
+		if new_model and new_model != model_current:
+			payload["llm_model_id"] = new_model
+		if openai_key.strip():
+			payload["openai_api_key"] = openai_key.strip()
+		if anthropic_key.strip():
+			payload["anthropic_api_key"] = anthropic_key.strip()
+		_ = update_config(**payload)
+		ph5.empty()
 		if hasattr(st, "rerun"):
 			st.rerun()
 		elif hasattr(st, "experimental_rerun"):
