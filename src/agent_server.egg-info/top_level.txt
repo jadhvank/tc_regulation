@@ -1,5 +1,7 @@
+agents
 config
 graphs
+history
 ingestion
 model
 rag

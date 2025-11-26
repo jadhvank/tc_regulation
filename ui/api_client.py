@@ -103,3 +103,24 @@ def chats_messages(chat_id: str, limit: int = 100) -> List[Dict[str, Any]]:
 		return list(data.get("messages", []))
 
 
+def get_config() -> Dict[str, Any]:
+	with _client() as c:
+		resp = c.get("/api/v1/config")
+		resp.raise_for_status()
+		return resp.json()
+
+
+def update_config(llm_model_id: Optional[str] = None, openai_api_key: Optional[str] = None, anthropic_api_key: Optional[str] = None) -> Dict[str, Any]:
+	payload: Dict[str, Any] = {}
+	if llm_model_id:
+		payload["llm_model_id"] = llm_model_id
+	if openai_api_key:
+		payload["openai_api_key"] = openai_api_key
+	if anthropic_api_key:
+		payload["anthropic_api_key"] = anthropic_api_key
+	with _client() as c:
+		resp = c.post("/api/v1/config", json=payload or {})
+		resp.raise_for_status()
+		return resp.json()
+
+

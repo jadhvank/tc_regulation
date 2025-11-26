@@ -20,6 +20,9 @@ from src.ingestion.sql_store import store_chunks
 from src.ingestion.analyze import analyze_and_store_schema
 from src.agents.db_context import refresh_session_profile
 from src.history.store import create_chat, list_chats as db_list_chats, list_messages as db_list_messages, append_message as db_append_message, get_chat as db_get_chat, update_chat_session as db_update_chat_session
+from src.config.secure_store import get_secret as get_app_secret, set_secret as set_app_secret, is_set as is_secret_set
+import os
+from functools import lru_cache
 
 app = FastAPI(title="Agent Server (MVP)", version="0.1.0")
 logger = get_logger(__name__)
@@ -247,6 +250,7 @@ async def get_file(session_id: str, filepath: str):
 
 # ----- Chat history endpoints -----
 from src.schemas.api import ChatCreateRequest, ChatCreateResponse, ChatListResponse, ChatListItem, ChatMessagesResponse, ChatMessage
+from src.schemas.api import ConfigGetResponse, ConfigUpdateRequest, ConfigUpdateResponse
 
 
 @router.post("/chats", response_model=ChatCreateResponse)
@@ -266,6 +270,39 @@ async def get_chat_messages_api(chat_id: str, limit: int = 100):
 	rows = db_list_messages(chat_id=chat_id, limit=limit)
 	msgs = [ChatMessage(role=r["role"], content=r["content"], created_at=r["created_at"]) for r in rows]
 	return ChatMessagesResponse(chat_id=chat_id, messages=msgs)
+
+
+# ----- Config endpoints -----
+@router.get("/config", response_model=ConfigGetResponse)
+async def get_config_api():
+	cur = get_settings()
+	return ConfigGetResponse(
+		llm_model_id=cur.LLM_MODEL_ID,
+		openai_key_set=is_secret_set("OPENAI_API_KEY") or bool(os.getenv("OPENAI_API_KEY")),
+		anthropic_key_set=is_secret_set("ANTHROPIC_API_KEY") or bool(os.getenv("ANTHROPIC_API_KEY")),
+	)
+
+
+@router.post("/config", response_model=ConfigUpdateResponse)
+async def update_config_api(req: ConfigUpdateRequest):
+	# Update model id
+	if req.llm_model_id:
+		os.environ["LLM_MODEL_ID"] = req.llm_model_id
+	# Update secrets (store encrypted; also export to env for runtime)
+	if req.openai_api_key:
+		set_app_secret("OPENAI_API_KEY", req.openai_api_key)
+		os.environ["OPENAI_API_KEY"] = req.openai_api_key
+	if req.anthropic_api_key:
+		set_app_secret("ANTHROPIC_API_KEY", req.anthropic_api_key)
+		os.environ["ANTHROPIC_API_KEY"] = req.anthropic_api_key
+	# Clear cached settings to pick up env overrides
+	get_settings.cache_clear()  # type: ignore[attr-defined]
+	cur = get_settings()
+	return ConfigUpdateResponse(
+		llm_model_id=cur.LLM_MODEL_ID,
+		openai_key_set=is_secret_set("OPENAI_API_KEY") or bool(os.getenv("OPENAI_API_KEY")),
+		anthropic_key_set=is_secret_set("ANTHROPIC_API_KEY") or bool(os.getenv("ANTHROPIC_API_KEY")),
+	)
 
 
 app.include_router(router)

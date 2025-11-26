@@ -26,6 +26,7 @@ dependencies = [
   "aiofiles>=23.2.1",
   "streamlit>=1.37.0",
   "python-multipart>=0.0.20",
+  "cryptography>=42.0.0",
 ]
 
 [project.optional-dependencies]

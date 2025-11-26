@@ -1,5 +1,6 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import sqlite3
 from uuid import uuid4
 
@@ -43,13 +44,18 @@ def create_chat(session_id: Optional[str] = None, title: Optional[str] = None) -
 	conn = _get_conn()
 	try:
 		chat_id = str(uuid4())
-		now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+		# Title timestamp in KST (Asia/Seoul), stored timestamps remain UTC
+		now_dt = datetime.utcnow()
+		kst_now = datetime.now(ZoneInfo("Asia/Seoul"))
+		now = now_dt.isoformat(timespec="seconds") + "Z"
+		# Default title to timestamp yyyy-mm-dd_hh-mm-ss if not provided
+		final_title = title if (title and title.strip()) else kst_now.strftime("%Y-%m-%d_%H-%M-%S")
 		conn.execute(
 			"INSERT INTO chats(chat_id, title, session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-			(chat_id, title, session_id, now, now),
+			(chat_id, final_title, session_id, now, now),
 		)
 		conn.commit()
-		return {"chat_id": chat_id, "title": title, "session_id": session_id, "created_at": now, "updated_at": now}
+		return {"chat_id": chat_id, "title": final_title, "session_id": session_id, "created_at": now, "updated_at": now}
 	finally:
 		conn.close()
 

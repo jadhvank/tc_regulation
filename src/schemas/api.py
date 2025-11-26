@@ -87,3 +87,21 @@ class ChatMessagesResponse(BaseModel):
 	messages: List[ChatMessage]
 
 
+class ConfigGetResponse(BaseModel):
+	llm_model_id: str
+	openai_key_set: bool
+	anthropic_key_set: bool
+
+
+class ConfigUpdateRequest(BaseModel):
+	llm_model_id: Optional[str] = None
+	openai_api_key: Optional[str] = None
+	anthropic_api_key: Optional[str] = None
+
+
+class ConfigUpdateResponse(BaseModel):
+	llm_model_id: str
+	openai_key_set: bool
+	anthropic_key_set: bool
+
+

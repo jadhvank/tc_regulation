@@ -11,12 +11,12 @@ if _PROJECT_ROOT not in sys.path:
 
 import streamlit as st
 
-from ui.api_client import chat_ingest, chat_process, csv_ingest, csv_process, chats_list, chats_create, chats_messages
+from ui.api_client import chat_ingest, chat_process, csv_ingest, csv_process, chats_list, chats_create, chats_messages, get_config, update_config
 from ui.components import render_answer, render_sources
 
 
-st.set_page_config(page_title="Agent Server UI", layout="wide")
-st.title("Agent Server UI")
+st.set_page_config(page_title="Sure Agent", layout="wide")
+st.title("Sure agent")
 st.markdown(
 	"""
 	<style>
@@ -50,7 +50,7 @@ with st.sidebar:
 				with st.spinner("Ingesting..."):
 					resp = chat_ingest(files=files_payload or None)
 				st.session_state["chat_session_id"] = resp["session_id"]
-				st.success(f"session_id={resp['session_id']}, chunks={resp['doc_count']}")
+				st.success(f"Success. chunks={resp['doc_count']}")
 		with col_b:
 			if st.button("Reset", key="btn_reset_chat_session"):
 				st.session_state["chat_session_id"] = None
@@ -69,7 +69,7 @@ with st.sidebar:
 			with st.spinner("Ingesting..."):
 				resp = csv_ingest(files=files_payload or None, folder_zip=zip_payload)
 			st.session_state["csv_session_id"] = resp["session_id"]
-			st.success(f"CSV session_id={resp['session_id']}, chunks={resp['doc_count']}")
+			st.success(f"CSV Success. chunks={resp['doc_count']}")
 
 	st.subheader("Chat History")
 	chats = []
@@ -91,14 +91,14 @@ with st.sidebar:
 			try:
 				created = chats_create(session_id=st.session_state.get("chat_session_id"), title=None)
 				st.session_state["chat_id"] = created.get("chat_id")
-				st.success(f"Created chat {st.session_state['chat_id']}")
+				st.success(f"Created chat")
 			except Exception:
 				st.error("Failed to create chat.")
 	with col_new2:
 		if st.button("Refresh"):
 			st.experimental_rerun()
 
-tab_chat, tab_csv = st.tabs(["Chat", "CSV/Folder"])
+tab_chat, tab_csv, tab_settings = st.tabs(["Chat", "CSV/Folder", "Settings"])
 
 with tab_chat:
 	st.subheader("Chat")
@@ -173,4 +173,40 @@ with tab_csv:
 						except Exception:
 							st.write(f"- {p}")
 
+
+with tab_settings:
+	st.subheader("Settings")
+	# Load current config (masked booleans only for keys)
+	cfg = {}
+	try:
+		cfg = get_config()
+	except Exception:
+		st.warning("Failed to load current config.")
+	model_current = str(cfg.get("llm_model_id") or "")
+	openai_set = bool(cfg.get("openai_key_set"))
+	anthropic_set = bool(cfg.get("anthropic_key_set"))
+
+	c1, c2 = st.columns([2, 2])
+	with c1:
+		new_model = st.text_input("LLM Model ID", value=model_current, help="e.g., gpt-4o-mini")
+	with c2:
+		st.caption(f"OpenAI Key: {'set' if openai_set else 'not set'} | Anthropic Key: {'set' if anthropic_set else 'not set'}")
+
+	openai_key = st.text_input("OPENAI_API_KEY", type="password", value="", help="Leave blank to keep unchanged")
+	anthropic_key = st.text_input("ANTHROPIC_API_KEY", type="password", value="", help="Leave blank to keep unchanged")
+
+	if st.button("Save Settings"):
+		with st.spinner("Saving..."):
+			payload = {}
+			if new_model and new_model != model_current:
+				payload["llm_model_id"] = new_model
+			if openai_key.strip():
+				payload["openai_api_key"] = openai_key.strip()
+			if anthropic_key.strip():
+				payload["anthropic_api_key"] = anthropic_key.strip()
+			_ = update_config(**payload)
+		if hasattr(st, "rerun"):
+			st.rerun()
+		elif hasattr(st, "experimental_rerun"):
+			st.experimental_rerun()
 
